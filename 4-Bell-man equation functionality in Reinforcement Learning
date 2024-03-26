@@ -20,3 +20,6 @@ for _ in range(num_iterations):
                 if new_values:
                     new_grid_world[i, j] = max(new_values) * gamma
     grid_world = new_grid_world
+print("State Values:")
+print(grid_world)
+
