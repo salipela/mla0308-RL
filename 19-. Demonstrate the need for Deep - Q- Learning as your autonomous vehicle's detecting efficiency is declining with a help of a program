@@ -1,0 +1,30 @@
+import numpy as np
+
+class Environment:
+    def __init__(self, num_states):
+        self.num_states = num_states
+
+    def reset(self):
+       
+        return np.random.randint(2, size=self.num_states)  # Binary state representation
+
+    def step(self, action):
+       
+        next_state = self.reset()  # Reset to a random state for simplicity
+        reward = self.calculate_reward(next_state)
+        return next_state, reward
+
+    def calculate_reward(self, state):
+      
+        if 1 in state:  # If there's an obstacle
+            return -1
+        else:
+            return 1  # Higher reward for reaching states without obstacles
+
+
+env = Environment(num_states=5)
+state = env.reset()
+print("Initial state:", state)
+next_state, reward = env.step(action=1)
+print("Next state:", next_state)
+print("Reward:", reward)
