@@ -1,0 +1,98 @@
+import numpy as np
+
+class TicTacToeQLearning:
+    def __init__(self, epsilon=0.1, alpha=0.1, gamma=0.9):
+        self.q_table = {}  
+        self.epsilon = epsilon 
+        self.alpha = alpha  
+        self.gamma = gamma  
+
+    def choose_action(self, state, valid_moves):
+        if np.random.uniform(0, 1) < self.epsilon:
+            return np.random.choice(valid_moves)
+        else:
+            state_actions = self.q_table.get(state, {})
+            if state_actions:
+                return max(state_actions, key=state_actions.get)
+            else:
+                return np.random.choice(valid_moves)
+
+    def update_q_table(self, state, action, reward, next_state):
+        current_q = self.q_table.get(state, {}).get(action, 0)
+        max_next_q = max(self.q_table.get(next_state, {}).values(), default=0)
+        new_q = current_q + self.alpha * (reward + self.gamma * max_next_q - current_q)
+        self.q_table.setdefault(state, {})[action] = new_q
+
+    def train(self, env, episodes=1000):
+        for _ in range(episodes):
+            state = env.reset()
+            done = False
+            while not done:
+                valid_moves = env.valid_moves()
+                action = self.choose_action(state, valid_moves)
+                next_state, reward, done = env.step(action)
+                self.update_q_table(state, action, reward, next_state)
+                state = next_state
+
+class TicTacToeEnvironment:
+    def __init__(self):
+        self.state = [' '] * 9
+        self.winning_combinations = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8],  # Rows
+            [0, 3, 6], [1, 4, 7], [2, 5, 8],  # Columns
+            [0, 4, 8], [2, 4, 6]              # Diagonals
+        ]
+        self.turn = 'X'
+
+    def reset(self):
+        self.state = [' '] * 9
+        self.turn = 'X'
+        return ''.join(self.state)
+
+    def valid_moves(self):
+        return [i for i, mark in enumerate(self.state) if mark == ' ']
+
+    def step(self, action):
+        self.state[action] = self.turn
+        done = self.is_terminal()
+        reward = self.calculate_reward(done)
+        next_state = ''.join(self.state)
+        self.turn = 'O' if self.turn == 'X' else 'X'
+        return next_state, reward, done
+
+    def is_terminal(self):
+        for combo in self.winning_combinations:
+            if all(self.state[i] == self.turn for i in combo):
+                return True
+        return ' ' not in self.state
+
+    def calculate_reward(self, done):
+        if done:
+            if self.is_terminal():
+                return 1
+            else:
+                return 0
+        else:
+            return 0
+
+    def display(self):
+        for i in range(3):
+            print('|'.join(self.state[i * 3:i * 3 + 3]))
+            if i < 2:
+                print('-' * 5)
+
+
+env = TicTacToeEnvironment()
+agent = TicTacToeQLearning()
+agent.train(env, episodes=10000)
+
+
+state = env.reset()
+env.display()
+done = False
+while not done:
+    action = agent.choose_action(state, env.valid_moves())
+    state, _, done = env.step(action)
+    env.display()
+    if done:
+        print("Game Over!")
