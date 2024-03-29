@@ -1,0 +1,107 @@
+import tensorflow as tf
+import numpy as np
+import gym
+
+
+gamma = 0.99  # discount factor
+epsilon = 0.2  # clip parameter
+epochs = 10
+batch_size = 64
+lr = 0.001  # learning rate
+input_shape = 4  # for CartPole-v1 environment, for example
+
+
+def create_policy_network(input_shape, output_shape):
+    model = tf.keras.Sequential([
+        tf.keras.layers.Dense(64, activation='relu', input_shape=input_shape),
+        tf.keras.layers.Dense(output_shape, activation='softmax')
+    ])
+    return model
+
+
+def ppo(env_name, num_episodes):
+    env = gym.make(env_name)
+    num_actions = env.action_space.n
+    policy_network = create_policy_network(input_shape, num_actions)
+    optimizer = tf.keras.optimizers.Adam(lr)
+
+    for episode in range(num_episodes):
+        states = []
+        actions = []
+        rewards = []
+        values = []
+        masks = []
+        entropy = 0
+
+        state = env.reset()
+        for t in range(epochs):
+            state = np.expand_dims(state, axis=0)
+            action_probs = policy_network.predict(state)
+            action = np.random.choice(num_actions, p=np.squeeze(action_probs))
+            next_state, reward, done, _ = env.step(action)
+
+            states.append(state)
+            action_one_hot = np.zeros(num_actions)
+            action_one_hot[action] = 1
+            actions.append(action_one_hot)
+            rewards.append(reward)
+            masks.append(1 - done)
+            values.append(policy_network.predict(state))
+
+            state = next_state
+
+            if done:
+                break
+
+        next_state = np.expand_dims(next_state, axis=0)
+        values.append(policy_network.predict(next_state))
+
+        values = np.array(values)
+        returns = np.zeros_like(rewards)
+        advantages = np.zeros_like(rewards)
+        advantage = 0
+
+        for i in reversed(range(len(rewards))):
+            returns[i] = rewards[i] + gamma * values[i + 1] * masks[i]
+            td_error = rewards[i] + gamma * values[i + 1] * masks[i] - values[i]
+            advantage = advantage * gamma * epsilon * masks[i] + td_error
+            advantages[i] = advantage
+
+        actor_losses = []
+        critic_losses = []
+
+        for _ in range(epochs):
+            indices = np.random.choice(len(states), batch_size)
+            batch_states = np.array([states[i] for i in indices])
+            batch_actions = np.array([actions[i] for i in indices])
+            batch_returns = np.array([returns[i] for i in indices])
+            batch_advantages = np.array([advantages[i] for i in indices])
+
+            with tf.GradientTape() as tape:
+                action_probs = policy_network(batch_states, training=True)
+                action_probs_old = action_probs
+                log_probs = tf.math.log(tf.reduce_sum(action_probs * batch_actions, axis=1))
+                action_probs_old = tf.math.log(tf.reduce_sum(action_probs_old * batch_actions, axis=1))
+                ratio = tf.exp(log_probs - action_probs_old)
+                clipped_ratio = tf.clip_by_value(ratio, 1 - epsilon, 1 + epsilon)
+                surrogate = tf.minimum(ratio * batch_advantages, clipped_ratio * batch_advantages)
+                actor_loss = -tf.reduce_mean(surrogate)
+                
+                value_preds = policy_network(batch_states, training=True)
+                value_loss = tf.reduce_mean(tf.square(batch_returns - value_preds))
+
+                entropy_loss = -tf.reduce_mean(action_probs * tf.math.log(action_probs))
+
+                total_loss = actor_loss + 0.5 * value_loss - 0.01 * entropy_loss
+
+            gradients = tape.gradient(total_loss, policy_network.trainable_variables)
+            optimizer.apply_gradients(zip(gradients, policy_network.trainable_variables))
+
+            actor_losses.append(actor_loss.numpy())
+            critic_losses.append(value_loss.numpy())
+
+        print(f"Episode: {episode+1}, Actor Loss: {np.mean(actor_losses)}, Critic Loss: {np.mean(critic_losses)}")
+
+    env.close()
+
+ppo("CartPole-v1", num_episodes=100)
